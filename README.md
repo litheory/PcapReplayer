@@ -1,5 +1,5 @@
 # Pcap Replayer
-A tool used for editing and replaying network traffic, which was previously captured by tools like tcpdump and 	Wireshark, between client and server. It allows you to replay the traffic back onto the network and through other 	devices such as firewalls. Moreover, it supports adjusting the speed rate so you can replay slow and distributed brute 	force attck traffic.
+A tool used for editing and replaying network traffic, which was previously captured by tools like tcpdump and 	Wireshark, between client and server. It allows you to replay the traffic back onto the network and through other 	devices such as firewalls. Moreover, it supports replay as the original timestamp so you can replay slow and distributed brute 	force attck traffic.
 # Usage
 Start the server
 ```
