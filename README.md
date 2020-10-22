@@ -9,6 +9,7 @@ then use client connect to server and transport the pcap file to remote end
 ```
 pcapreplay.py -i eth0 -f [pcapfile] -t 192.168.1.24 -p 6324
 ```
+then the pcap's source ip and destination ip will be changed into PcapReplayer client and server and replay automaticly
 ## Help doc
 ```
 [SERVER]: pcapreplay.py -i [interface] --listen -p [port]
