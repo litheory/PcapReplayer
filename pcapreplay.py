@@ -87,10 +87,10 @@ def zip_file(file_name):
     return ziped_file
 
 def unzip_file(file_name):
-    print("checkpoint")
     pcap_file = os.path.splitext(file_name)[0]
+    print(pcap_file)
     zip_obj = gzip.GzipFile(mode = "rb", fileobj = open(file_name, "rb"))
-    open(r"pcap_file", "wb+").write(zip_obj.read())
+    open(pcap_file, "wb+").write(zip_obj.read())
     return pcap_file
 
 def send_file(client):
