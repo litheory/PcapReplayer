@@ -6,6 +6,7 @@ import os
 import time
 import re
 
+from progressbar import *
 import getopt
 import gzip
 import hashlib
@@ -18,6 +19,7 @@ from scapy.utils import rdpcap
 
 import threading
 import subprocess
+
 
 import logging
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
@@ -34,26 +36,27 @@ pcap_file = ""
 # protocol = ""
 
 def info(str):
-    print("[INFO] "+str)
+    print("[INFO] " + str)
 def error(str):
-    print("[ERROR] "+str)
-def exit_error(str):
-    print("[ERROR] "+str)
+    print("[ERROR] " + str)
+def conn_error(str):
+    global port
+    print("[ERROR] " + str)
+    print("")
+    info("Continue listening on %d" %port)
     sys.exit(0)
+def exit_error(str):
+    print("[ERROR] " + str)
+    sys.exit(0)
+
 def debugger(str):
     global debug
     if debug == True:
-        print("[DEBUG] "+str)
+        print("[DEBUG] " + str)
 def verboser(str):
     global verbose
     if verbose == True:
         print(str)
-def progress_bar(percent, width = 50):
-    use_num = int(percent * width)
-    space_num = int(width - use_num)
-    percent = percent * 100
-    print('[%s%s]%d%%' %(use_num * '#', space_num * ' ', percent), file = sys.stdout, flush = True, end = '\r')
-
 
 def validate_ip(ip):
     compile_ip = re.compile('^(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|[1-9])\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)$')
@@ -77,6 +80,7 @@ def get_file_md5(file_name):
                 break
             md5.update(data)
     return md5.hexdigest()
+
 def zip_file(file_name):
     ziped_file = file_name + '.gz'
     # Zip pcap
@@ -85,7 +89,6 @@ def zip_file(file_name):
     zip_obj.write(open(file_name, 'rb').read())
     zip_obj.close()
     return ziped_file
-
 def unzip_file(file_name):
     pcap_file = os.path.splitext(file_name)[0]
     print(pcap_file)
@@ -130,12 +133,10 @@ def send_file(client):
         data = fd.read()
         client.send(data)
 
-
 def receive_file(server):
     global pcap_file
 
     buffer_size = 1024
-
     # Firstly receive 6 byte header length
     # Decompress the header length, get the size of the header, receive the header, and deserialize (json.loads).
     # Finally receiving the file
@@ -144,10 +145,10 @@ def receive_file(server):
     debugger("Received header info")
     head_struct = server.recv(4)
     print(head_struct) 
-    debugger("Unpack header") 
+    # debugger("Unpack header") 
     head_len = struct.unpack('i', head_struct)[0]
     # print(head_len)
-    debugger("Receive header dir")
+    # debugger("Receive header dir")
     data = server.recv(head_len)
     head_dir = json.loads(data.decode('utf-8'))
     # file_index = head_dir['fileindex']
@@ -159,33 +160,34 @@ def receive_file(server):
     recv_len = 0  
     recv_file = b''
 
-    with open (filename, 'wb+') as fd:
-        debugger("open %s" %filename)
-        while recv_len < filesize_b:
-            print(recv_len)
-            percent = recv_len / filesize_b
-            progress_bar(percent)
+    with open(filename, 'wb+') as fd:
+        # debugger("open %s" %filename)
+        widgets = [Percentage(), ' ', Bar(), ' ', Timer(), ' ', FileTransferSpeed()]
+        with ProgressBar(widgets=widgets, max_value=filesize_b) as bar:
+            # debugger("Create progress bar")
+            while recv_len < filesize_b:
 
-            if filesize_b - recv_len > buffer_size:
-                recv_file = server.recv(buffer_size)
-                fd.write(recv_file)
-                recv_len += len(recv_file)
-            else:
-                recv_file = server.recv(filesize_b - recv_len)
-                recv_len += len(recv_file)
-                fd.write(recv_file)
+                bar.update(recv_len)
 
-        print(str(recv_len)+"b/" + str(filesize_b)+"b")
+                if filesize_b - recv_len > buffer_size:
+                    recv_file = server.recv(buffer_size)
+                    fd.write(recv_file)
+                    recv_len += len(recv_file)
+                else:
+                    recv_file = server.recv(filesize_b - recv_len)
+                    recv_len += len(recv_file)
+                    fd.write(recv_file)
 
     return filename, md5
+
 # sync pcap file between client and server
-def sync_file(client_or_server):
+def sync_file(host):
     # listen is server, not listen is client
     global listen
     global pcap_file
 
     if not listen:
-        client = client_or_server
+        client = host
         try:
             debugger("Try sending pcap file to server")
             send_file(client)
@@ -196,7 +198,7 @@ def sync_file(client_or_server):
             exit_error("400: send file failed")
     # server unzip file module
     else:
-        server = client_or_server
+        server = host
         try:
 
             debugger("Try receiving pcap file from client")
@@ -211,7 +213,7 @@ def sync_file(client_or_server):
             else:
                 exit_error("Invalid file md5! Failed to receive file")
                 server.send("500".encode('utf-8'))
-                exit_error("500: receive file error")
+                conn_error("500: receive file error")
             
             debugger("Unzip pcap file")
             pcap_file = unzip_file(ziped_file)
@@ -219,7 +221,9 @@ def sync_file(client_or_server):
                 os.remove(ziped_file)
         except:
             server.send("500".encode('utf-8'))
-            exit_error("500: receive file error")
+            conn_error("500: receive file error")
+
+# def load_pcap()
 
 def run_as_server():
     global target
@@ -256,13 +260,13 @@ def conn_handler(conn):
 
         request = conn.recv(3).decode('utf-8')
         if request == "":
-            exit_error("connection closed by peer")
-        if request == "100":
+            conn_error("connection closed by peer")
+        elif request == "100":
             debugger("CLIENT 100 => connection established")
             info("Receive pcap file from client")
             sync_file(conn)
         elif request == "400":
-            exit_error("CLIENT 400 => send file failed")
+            conn_error("CLIENT 400 => send file failed")
 
 def run_as_client():
     global target
@@ -281,18 +285,18 @@ def run_as_client():
             if response == "":
                 error("Connection closed by peer")
                 client.close()
-            if response == "200":
+            elif response == "200":
                 debugger("SERVER 200 => connection accepted")
                 info("Success connecting to server, start sync pcap file")
                 client.send("100".encode('utf-8'))
                 info("100 connected established")
                 # send file to server
                 sync_file(client)
-            if response == "202":
+            elif response == "202":
                 debugger("SERVER 202 => receive file success")
                 if os.path.exists(pcap_file+'.gz'):
                     os.remove(pcap_file+'.gz')
-            if response == "500":
+            elif response == "500":
                 exit_error("SERVER 500 => receive file failed")
             
     except socket.error as exc:
