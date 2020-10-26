@@ -18,43 +18,42 @@ from scapy.all import *
 from scapy.utils import rdpcap
 
 import threading
-import subprocess
+# import subprocess
 
-import logging
-logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+# import logging
+# logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
 # global parameter
-debug = True
+debug = False
 verbose = False
 listen = False      # listen is server, not listen is client
 target = ""
 port = 6324
-interface = ""
+# interface = ""
 pcap_file = ""
 # speed = 1
 # protocol = ""
 
 def info(str):
     print("[INFO] " + str)
+
 def error(str):
     print("[ERROR] " + str)
-def conn_error(str):
-    global port
-    print("[ERROR] " + str)
-    info("Continue listening on %d" %port)
-    sys.exit(0)
+
 def exit_error(str):
     print("[ERROR] " + str)
-    sys.exit(0)
+    sys.exit(1)
 
 def debugger(str):
     global debug
     if debug == True:
         print("[DEBUG] " + str)
+
 def verboser(str):
     global verbose
     if verbose == True:
         print(str)
+
 
 def validate_ip(ip):
     compile_ip = re.compile('^(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|[1-9])\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)$')
@@ -87,12 +86,14 @@ def zip_file(file_name):
     zip_obj.write(open(file_name, 'rb').read())
     zip_obj.close()
     return ziped_file
+
 def unzip_file(file_name):
     pcap_file = os.path.splitext(file_name)[0]
     print(pcap_file)
     zip_obj = gzip.GzipFile(mode = "rb", fileobj = open(file_name, "rb"))
     open(pcap_file, "wb+").write(zip_obj.read())
     return pcap_file
+
 
 def send_file(client):
     global pcap_file
@@ -130,6 +131,7 @@ def send_file(client):
         data = fd.read()
         client.send(data)
     info("Send %s" %ziped_file)
+
 def receive_file(server):
 
     buffer_size = 1024
@@ -140,7 +142,7 @@ def receive_file(server):
     # Received header length
     debugger("Received header info")
     head_struct = server.recv(4)
-    print(head_struct) 
+    debugger("head struct:"+str(head_struct)) 
     # debugger("Unpack header") 
     head_len = struct.unpack('i', head_struct)[0]
     # print(head_len)
@@ -176,6 +178,7 @@ def receive_file(server):
 
     return filename, md5
 
+
 # sync pcap file between client and server
 def sync_file(host):
     # listen is server, not listen is client
@@ -183,130 +186,41 @@ def sync_file(host):
     global pcap_file
 
     if not listen:
-        client = host
         try:
-            debugger("Try sending pcap file to server")
-            send_file(client)
+            info("Try sending pcap file to server")
+            send_file(host)
             info("Send file complete")
             # client.send("200 send file success".encode('utf-8'))
         except:
-            client.send("SF".encode('utf-8'))
-            exit_error("SF: send file failed")
+            host.send("SDFA".encode('utf-8'))
+            exit_error("SDFA: send file failed")
     # server unzip file module
     else:
-        server = host
         try:
 
-            debugger("Try receiving pcap file from client")
-            ziped_file, head_md5 = receive_file(server)
+            info("Try receiving pcap file from client")
+            ziped_file, head_md5 = receive_file(host)
 
             debugger("Check if file md5 is accurate")
             file_md5 = get_file_md5(ziped_file)
             if file_md5 == head_md5:
                 info("Valid file md5")
-                server.send("RS".encode('utf-8'))
-                info("RS: receive file success")
+                host.send("RCSC".encode('utf-8'))
+                info("RCSC: receive file success")
             else:
                 exit_error("Invalid file md5! Failed to receive file")
-                server.send("RF".encode('utf-8'))
-                conn_error("RF: receive file error")
+                host.send("RCFA".encode('utf-8'))
+                exit_error("RCFA: receive file error")
             
             debugger("Unzip pcap file")
             pcap_file = unzip_file(ziped_file)
             if os.path.exists(ziped_file):
                 os.remove(ziped_file)
         except:
-            server.send("RF".encode('utf-8'))
-            conn_error("RF: receive file error")
+            host.send("RCFA".encode('utf-8'))
+            exit_error("RCFA: receive file error")
 
 
-# def parse_tcp_stream(packets):
-#     port_list = []
-#     packet_num = len(packets)
-#     for i in range(0, packet_num):
-#         if packets[i][TCP].flags == 0x02:
-#             port_list.append(packets[i][TCP].sport)
-    
-#     stream_num = len(port_list)
-#     tcp_stream = [[] for _ in range(stream_num)]
-
-#     for i in range(0, packet_num):
-#         if packets[i][TCP].sport in port_list:
-#             j = port_list.index(packets[i][TCP].sport)
-#             tcp_stream[j].append(packets[i])
-#         elif packets[i][TCP].dport in port_list:
-#             j = port_list.index(packets[i][TCP].dport)
-#             tcp_stream[j].append(packets[i])
-#     return tcp_stream
-
-# def parse_packets(packets):
-#     packet_num = len(packets)
-#     client_addr = {}
-#     server_addr = {}
-#     client2server = {}
-#     for i in range(0, packet_num):
-#         try:
-#             if packets[i][TCP].flags == 0x02:
-#                 client_ip = packets[i][IP].src
-#                 server_ip = packets[i][IP].dst
-#                 client_port = packets[i][TCP].sport
-#                 server_port = packets[i][TCP].dport
-#                 client_addr[src_ip] = src_port
-#                 server_addr[dst_ip] = dst_port
-#                 client2server[client_addr[src_ip]] = server_addr[dst_ip]
-#         except:
-#             pass    
-#     return client2server
-
-# def get_tcp_stream(packets):
-#     addr = []
-#     tcp_stream = []
-#     packet_num = len(packets)
-#     for i in range(0, packet_num):
-#         try:
-#             src_ip = packets[i][TCP].src
-#             src_port = packets[i][TCP].sport
-#             src_addr = src_ip + str(src_port)
-#             dst_ip = packets[i][TCP].dst
-#             dst_port = packets[i][TCP].dport
-#             dst_addr = src_ip + str(src_port)
-            
-#             if packets[i][TCP].flags == 0x02:
-#                 # even number is client_addr
-#                 addr.append(src_addr)
-#                 # odd number is server_addr
-#                 # addr.append(server_addr)
-
-#             if src_addr in addr or dst:
-#                 stream = addr.index(addr[i])
-#                 tcp_stream[stream].append(packets[i])
-#         except:
-#             pass
-    
-#     port_num = len(port)
-#     tcp_stream=[[] for _ in range(port_num)]
-#     # for i in range(0, packet_num):
-
-# def get_client_packet_index(packets):
-#     packet_num = len(packets)
-#     client_addr = []
-#     client_index = []
-#     src_addr = packets[i][TCP].src + ":" + str(packets[i][TCP].sport)
-#     dst_addr = packets[i][TCP].dst + ":" + str(packets[i][TCP].dport)
-#     for i in range(0, packet_num):
-#         try:
-#             if packets[i][TCP].flags == 0x02:
-#                 client_addr.append(src_addr)
-#             if src_addr in client_addr:
-#                 client_index.append(i)
-#             elif dst_addr in client_addr:
-#                 client_index.append(1)
-#         except:
-#             pass
-#     return client_index
-
-# Determine if it is a client/server packet
-# Then get all the client/server packets' index and load into index list
 def get_packet_index(packets):
     global listen
 
@@ -344,15 +258,81 @@ def get_packet_index(packets):
 
     return packet_index    
 
-def load_pcap():
+def get_adjacent_index(packet_num, packet_index, i):
+    if i == 0:
+        last_index = -1
+    else:
+        last_index = packet_index[i-1]
+
+    packet_num = len(packet_index)   
+    
+    if i == packet_num - 1:
+        next_index = -1
+    else:
+        next_index = packet_index[i+1]
+
+    return last_index, next_index        
+
+def is_continue(num1, num2):
+    if num1 + 1 == num2:
+        return True
+    elif num2 + 1 == num1:
+        return True
+    else:
+        return False
+
+def send_packet(host):
     global pcap_file
-    global listen
-    info("Load pcap")
+    debugger("Load pcap")
+    
     packets = rdpcap(pcap_file)
     packet_index = get_packet_index(packets)
-    print(packet_index)
+    
+    packet_num = len(packet_index)
 
-    return packet_index
+    for i in range(0, packet_num):
+
+        current_index = packet_index[i]
+
+        last_index, next_index = get_adjacent_index(packet_num, packet_index, i)
+
+        if is_continue(current_index, last_index):
+            debugger("last: " + str(last_index)+" =>" + "current: " + str(current_index) + ", continue")
+            if i != 0:
+                delta = packets[current_index].time - packets[last_index].time
+                time.sleep(delta)
+            # scapy send
+            send(packets[current_index], verbose = False)
+            verboser("index: " + str(current_index) +  " ==>" + " " + packets[current_index].summary())
+
+
+        elif not is_continue(current_index, last_index):
+            debugger("last: " + str(last_index) + " =>" + "current: " + str(current_index) + ", not continue")
+            while True:
+                index = host.recv(4)
+                if len(index):
+                    remote_index = struct.unpack('i', index)[0]
+                    debugger("last remote index: " + str(remote_index))
+                    delta = packets[current_index].time - packets[remote_index].time
+                    time.sleep(delta)
+                    # scapy send
+                    send(packets[current_index], verbose = False)
+                    verboser("index: " + str(current_index) + " ==>" + " " + packets[current_index].summary())
+                    break
+        
+        if not is_continue(next_index, current_index):
+            debugger("current: " + str(current_index) + " =>" + "next: " + str(next_index) + ", not continue")
+            if i != len(packets)- 1:
+                index = struct.pack('i', current_index)
+                debugger("Send current index:" + str(current_index))
+                host.send(index)
+
+    info("Send all packets finished, connection will be closed")
+    time.sleep(1)
+    info("Exit")
+    host.close()
+    info("Server wiil continue listening on port %d" %port)
+    sys.exit(0)
 
 def run_as_server():
     global target
@@ -371,15 +351,18 @@ def run_as_server():
     info("Listening on %s:%d" %(target, port))
 
     while True:
+
         conn, client_addr = server.accept()
         info("Accept connection from %s:%d" %(client_addr[0], client_addr[1]))
         conn_thread = threading.Thread(target = conn_handler, args = (conn,))
         conn_thread.start()
+        
 
 def conn_handler(conn):
     global pcap_file
-    conn.send("CA".encode('utf-8'))
-    info("CA: connection accepted")
+
+    conn.send("CNAC".encode('utf-8'))
+    debugger("CNAC: connection accepted")
     while True:
 
         if not conn:
@@ -388,14 +371,15 @@ def conn_handler(conn):
 
         request = conn.recv(4).decode('utf-8')
         if request == "":
-            conn_error("connection closed by peer")
+            exit_error("connection closed by peer")
+            conn.close()
         elif request == "CNES":
             debugger("CLIENT CE => connection established")
-            info("Receive pcap file from client")
             sync_file(conn)
-            load_pcap()
-        elif request == "CNFA":
-            conn_error("CLIENT 400 => send file failed")
+            send_packet(conn)
+        elif request == "CDFA":
+            exit_error("CLIENT CDFA => send file failed")
+    
 
 def run_as_client():
     global target
@@ -410,25 +394,25 @@ def run_as_client():
         client.connect((target, port))
 
         while True:
-            response = client.recv(3).decode('utf-8')
+            response = client.recv(4).decode('utf-8')
             if response == "":
                 error("Connection closed by peer")
                 client.close()
             elif response == "CNAC":
                 debugger("SERVER CNAC => connection accepted")
                 info("Success connecting to server, start sync pcap file")
-                client.send("CE".encode('utf-8'))
-                info("CE connected established")
+                client.send("CNES".encode('utf-8'))
+                debugger("CNES connected established")
                 # send file to server
                 sync_file(client)
             elif response == "RCSC":
                 debugger("SERVER RCSC => receive file success")
                 if os.path.exists(pcap_file+'.gz'):
                     os.remove(pcap_file+'.gz')
-                load_pcap()
+                send_packet(client)
             elif response == "RCFA":
                 exit_error("SERVER RCFA => receive file failed")
-            
+
     except socket.error as exc:
         # just catch generic errors
         error("Exception! Exiting.")
