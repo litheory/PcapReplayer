@@ -20,7 +20,6 @@ from scapy.utils import rdpcap
 import threading
 import subprocess
 
-
 import logging
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
@@ -42,7 +41,6 @@ def error(str):
 def conn_error(str):
     global port
     print("[ERROR] " + str)
-    print("")
     info("Continue listening on %d" %port)
     sys.exit(0)
 def exit_error(str):
@@ -100,7 +98,6 @@ def send_file(client):
     global pcap_file
 
     ziped_file = zip_file(pcap_file)
-
     # Convert the header to a string (json.dumps), and then pack the length of the string.
     # Send header length, then send header content, and finally replay content.
     # Header contents include file name, file information, header
@@ -120,7 +117,7 @@ def send_file(client):
     # Convert dic to string
     debugger("Convert file dic to string")
     head_info = json.dumps(dirc)    
-    print(head_info)
+    # print(head_info)
     head_info_len = struct.pack('i', len(head_info))
     # print(head_info_len)  
 
@@ -132,9 +129,8 @@ def send_file(client):
     with open(ziped_file, 'rb') as fd:
         data = fd.read()
         client.send(data)
-
+    info("Send %s" %ziped_file)
 def receive_file(server):
-    global pcap_file
 
     buffer_size = 1024
     # Firstly receive 6 byte header length
@@ -194,8 +190,8 @@ def sync_file(host):
             info("Send file complete")
             # client.send("200 send file success".encode('utf-8'))
         except:
-            client.send("400".encode('utf-8'))
-            exit_error("400: send file failed")
+            client.send("SF".encode('utf-8'))
+            exit_error("SF: send file failed")
     # server unzip file module
     else:
         server = host
@@ -208,22 +204,155 @@ def sync_file(host):
             file_md5 = get_file_md5(ziped_file)
             if file_md5 == head_md5:
                 info("Valid file md5")
-                server.send("202".encode('utf-8'))
-                info("202: receive file success")
+                server.send("RS".encode('utf-8'))
+                info("RS: receive file success")
             else:
                 exit_error("Invalid file md5! Failed to receive file")
-                server.send("500".encode('utf-8'))
-                conn_error("500: receive file error")
+                server.send("RF".encode('utf-8'))
+                conn_error("RF: receive file error")
             
             debugger("Unzip pcap file")
             pcap_file = unzip_file(ziped_file)
             if os.path.exists(ziped_file):
                 os.remove(ziped_file)
         except:
-            server.send("500".encode('utf-8'))
-            conn_error("500: receive file error")
+            server.send("RF".encode('utf-8'))
+            conn_error("RF: receive file error")
 
-# def load_pcap()
+
+# def parse_tcp_stream(packets):
+#     port_list = []
+#     packet_num = len(packets)
+#     for i in range(0, packet_num):
+#         if packets[i][TCP].flags == 0x02:
+#             port_list.append(packets[i][TCP].sport)
+    
+#     stream_num = len(port_list)
+#     tcp_stream = [[] for _ in range(stream_num)]
+
+#     for i in range(0, packet_num):
+#         if packets[i][TCP].sport in port_list:
+#             j = port_list.index(packets[i][TCP].sport)
+#             tcp_stream[j].append(packets[i])
+#         elif packets[i][TCP].dport in port_list:
+#             j = port_list.index(packets[i][TCP].dport)
+#             tcp_stream[j].append(packets[i])
+#     return tcp_stream
+
+# def parse_packets(packets):
+#     packet_num = len(packets)
+#     client_addr = {}
+#     server_addr = {}
+#     client2server = {}
+#     for i in range(0, packet_num):
+#         try:
+#             if packets[i][TCP].flags == 0x02:
+#                 client_ip = packets[i][IP].src
+#                 server_ip = packets[i][IP].dst
+#                 client_port = packets[i][TCP].sport
+#                 server_port = packets[i][TCP].dport
+#                 client_addr[src_ip] = src_port
+#                 server_addr[dst_ip] = dst_port
+#                 client2server[client_addr[src_ip]] = server_addr[dst_ip]
+#         except:
+#             pass    
+#     return client2server
+
+# def get_tcp_stream(packets):
+#     addr = []
+#     tcp_stream = []
+#     packet_num = len(packets)
+#     for i in range(0, packet_num):
+#         try:
+#             src_ip = packets[i][TCP].src
+#             src_port = packets[i][TCP].sport
+#             src_addr = src_ip + str(src_port)
+#             dst_ip = packets[i][TCP].dst
+#             dst_port = packets[i][TCP].dport
+#             dst_addr = src_ip + str(src_port)
+            
+#             if packets[i][TCP].flags == 0x02:
+#                 # even number is client_addr
+#                 addr.append(src_addr)
+#                 # odd number is server_addr
+#                 # addr.append(server_addr)
+
+#             if src_addr in addr or dst:
+#                 stream = addr.index(addr[i])
+#                 tcp_stream[stream].append(packets[i])
+#         except:
+#             pass
+    
+#     port_num = len(port)
+#     tcp_stream=[[] for _ in range(port_num)]
+#     # for i in range(0, packet_num):
+
+# def get_client_packet_index(packets):
+#     packet_num = len(packets)
+#     client_addr = []
+#     client_index = []
+#     src_addr = packets[i][TCP].src + ":" + str(packets[i][TCP].sport)
+#     dst_addr = packets[i][TCP].dst + ":" + str(packets[i][TCP].dport)
+#     for i in range(0, packet_num):
+#         try:
+#             if packets[i][TCP].flags == 0x02:
+#                 client_addr.append(src_addr)
+#             if src_addr in client_addr:
+#                 client_index.append(i)
+#             elif dst_addr in client_addr:
+#                 client_index.append(1)
+#         except:
+#             pass
+#     return client_index
+
+# Determine if it is a client/server packet
+# Then get all the client/server packets' index and load into index list
+def get_packet_index(packets):
+    global listen
+
+    packet_num = len(packets)
+    addr = []
+    packet_index = []
+
+    for i in range(0, packet_num):
+        src_addr = packets[i][IP].src + ":" + str(packets[i][IP].sport)
+        dst_addr = packets[i][IP].dst + ":" + str(packets[i][IP].dport)
+        try:
+            # tcp stream SYN
+            if packets[i][TCP].flags == 0x02:
+                if not listen:
+                    # Client is src
+                    addr.append(src_addr)
+                else:
+                    # Server is dst 
+                    addr.append(dst_addr)
+            if src_addr in addr:
+                packet_index.append(i)
+
+            # # tcp stream FIN and ACK
+            # if packets[i-1][TCP].flags == 0x11 and packets[i][TCP].flags == 0x10:
+            #     if not listen:
+            #         # Delete client in addr list
+            #         del addr[addr.index(dst_addr)]
+            #         # addr[addr.index(dst_addr)] = ''
+            #     else:
+            #         # Delete server in addr list
+            #         del addr[addr.index(dst_addr)]
+            #         # addr[addr.index(src_addr)] = ''
+        except:
+            pass
+
+    return packet_index    
+
+def load_pcap():
+    global pcap_file
+    global listen
+    info("Load pcap")
+    packets = rdpcap(pcap_file)
+    packet_index = get_packet_index(packets)
+    print(packet_index)
+
+    return packet_index
 
 def run_as_server():
     global target
@@ -234,9 +363,7 @@ def run_as_server():
         target = "0.0.0.0"
     elif not validate_ip(target):
         exit_error("Invalid IP address!")
-    if not port:
-        port = 6324
-    elif not validate_port(port):
+    if not validate_port(port):
         exit_error("Invalid port!")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((target, port))
@@ -244,28 +371,30 @@ def run_as_server():
     info("Listening on %s:%d" %(target, port))
 
     while True:
-        conn, addr = server.accept()
-        info("Accept connection from %s:%d" %(addr[0], addr[1]))
+        conn, client_addr = server.accept()
+        info("Accept connection from %s:%d" %(client_addr[0], client_addr[1]))
         conn_thread = threading.Thread(target = conn_handler, args = (conn,))
         conn_thread.start()
 
 def conn_handler(conn):
-    conn.send("200".encode('utf-8'))
-    info("200: connection accepted")
+    global pcap_file
+    conn.send("CA".encode('utf-8'))
+    info("CA: connection accepted")
     while True:
 
         if not conn:
             info("%s:%d has disconnected" %(addr[0], addr[1]))
             break
 
-        request = conn.recv(3).decode('utf-8')
+        request = conn.recv(4).decode('utf-8')
         if request == "":
             conn_error("connection closed by peer")
-        elif request == "100":
-            debugger("CLIENT 100 => connection established")
+        elif request == "CNES":
+            debugger("CLIENT CE => connection established")
             info("Receive pcap file from client")
             sync_file(conn)
-        elif request == "400":
+            load_pcap()
+        elif request == "CNFA":
             conn_error("CLIENT 400 => send file failed")
 
 def run_as_client():
@@ -285,19 +414,20 @@ def run_as_client():
             if response == "":
                 error("Connection closed by peer")
                 client.close()
-            elif response == "200":
-                debugger("SERVER 200 => connection accepted")
+            elif response == "CNAC":
+                debugger("SERVER CNAC => connection accepted")
                 info("Success connecting to server, start sync pcap file")
-                client.send("100".encode('utf-8'))
-                info("100 connected established")
+                client.send("CE".encode('utf-8'))
+                info("CE connected established")
                 # send file to server
                 sync_file(client)
-            elif response == "202":
-                debugger("SERVER 202 => receive file success")
+            elif response == "RCSC":
+                debugger("SERVER RCSC => receive file success")
                 if os.path.exists(pcap_file+'.gz'):
                     os.remove(pcap_file+'.gz')
-            elif response == "500":
-                exit_error("SERVER 500 => receive file failed")
+                load_pcap()
+            elif response == "RCFA":
+                exit_error("SERVER RCFA => receive file failed")
             
     except socket.error as exc:
         # just catch generic errors
