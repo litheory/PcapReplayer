@@ -29,9 +29,9 @@ verbose = False
 listen = False      # listen is server, not listen is client
 target = ""
 port = 6324
-# interface = ""
+interface = "eth0"
 pcap_file = ""
-# speed = 1
+speed = 1
 # protocol = ""
 
 def info(str):
@@ -220,6 +220,8 @@ def sync_file(host):
             host.send("RCFA".encode('utf-8'))
             exit_error("RCFA: receive file error")
 
+# def set_inner_mode(packets):
+    
 
 def get_packet_index(packets):
     global listen
@@ -258,75 +260,128 @@ def get_packet_index(packets):
 
     return packet_index    
 
-def get_adjacent_index(packet_num, packet_index, i):
-    if i == 0:
-        last_index = -1
-    else:
-        last_index = packet_index[i-1]
 
-    packet_num = len(packet_index)   
+# Deprecated function
+#
+# def get_adjacent_index(packet_num, packet_index, i):
+#     if i == 0:
+#         last_index = -1
+#     else:
+#         last_index = packet_index[i-1]
+
+#     packet_num = len(packet_index)   
     
-    if i == packet_num - 1:
-        next_index = -1
-    else:
-        next_index = packet_index[i+1]
+#     if i == packet_num - 1:
+#         next_index = -1
+#     else:
+#         next_index = packet_index[i+1]
 
-    return last_index, next_index        
+#     return last_index, next_index        
 
-def is_continue(num1, num2):
-    if num1 + 1 == num2:
-        return True
-    elif num2 + 1 == num1:
-        return True
-    else:
-        return False
+# def is_continue(num1, num2):
+#     if num1 + 1 == num2:
+#         return True
+#     elif num2 + 1 == num1:
+#         return True
+#     else:
+#         return False
 
-def send_packet(host):
-    global pcap_file
-    debugger("Load pcap")
+# def send_packet(host):
+#     global pcap_file
+#     debugger("Load pcap")
     
-    packets = rdpcap(pcap_file)
-    packet_index = get_packet_index(packets)
+#     packets = rdpcap(pcap_file)
+#     packet_index = get_packet_index(packets)
     
-    packet_num = len(packet_index)
+#     total = len(packets)
+#     packet_num = len(packet_index)
+#     t0 = time.time()
+#     info("Start send packet")
+#     for i in range(0, packet_num):
 
-    for i in range(0, packet_num):
+#         current_index = packet_index[i]
+#         last_index, next_index = get_adjacent_index(packet_num, packet_index, i)
 
-        current_index = packet_index[i]
+#         if is_continue(current_index, last_index):
+#             debugger("last:" + str(last_index)+" =>" + "current:" + str(current_index) + ", continue")
+#             if i != 0:
+#                 delta = packets[current_index].time - packets[last_index].time
+#                 time.sleep(delta)
+#             # scapy send
+#             timestamp = round((time.time() - t0), 6) 
+#             sendp(packets[current_index], verbose = False, return_packets = True)
+#             # verboser("I:" + str(current_index) + "T:" + str(timestamp) + " ==>" + " " + packets[current_index].summary())
 
-        last_index, next_index = get_adjacent_index(packet_num, packet_index, i)
-
-        if is_continue(current_index, last_index):
-            debugger("last: " + str(last_index)+" =>" + "current: " + str(current_index) + ", continue")
-            if i != 0:
-                delta = packets[current_index].time - packets[last_index].time
-                time.sleep(delta)
-            # scapy send
-            send(packets[current_index], verbose = False)
-            verboser("index: " + str(current_index) +  " ==>" + " " + packets[current_index].summary())
-
-
-        elif not is_continue(current_index, last_index):
-            debugger("last: " + str(last_index) + " =>" + "current: " + str(current_index) + ", not continue")
-            while True:
-                index = host.recv(4)
-                if len(index):
-                    remote_index = struct.unpack('i', index)[0]
-                    debugger("last remote index: " + str(remote_index))
-                    delta = packets[current_index].time - packets[remote_index].time
-                    time.sleep(delta)
-                    # scapy send
-                    send(packets[current_index], verbose = False)
-                    verboser("index: " + str(current_index) + " ==>" + " " + packets[current_index].summary())
-                    break
+#         elif not is_continue(current_index, last_index) or (last_index == -1 and current_index != total -1 ):
+#             debugger("last:" + str(last_index) + " =>" + "current:" + str(current_index) + ", not continue")
+#             while True:
+#                 index = host.recv(4)
+#                 if len(index):
+#                     timestamp = round((time.time() - t0), 6) 
+#                     remote_index = struct.unpack('i', index)[0]
+#                     debugger("last remote index: " + str(remote_index))
+#                     verboser("I:" + str(remote_index) + "T:" + str(timestamp) + " <==" + " " + packets[remote_index].summary())
+#                     if remote_index == current_index - 1:
+#                         delta = packets[current_index].time - packets[remote_index].time
+#                         time.sleep(delta)
+#                         # scapy send
+#                         timestamp = round((time.time() - t0), 6) 
+#                         sendp(packets[current_index], verbose = False, return_packets = True)
+#                         # verboser("I:" + str(current_index) + "T:" + str(timestamp) +  " ==>" + " " + packets[current_index].summary())
+#                         break
         
-        if not is_continue(next_index, current_index):
-            debugger("current: " + str(current_index) + " =>" + "next: " + str(next_index) + ", not continue")
-            if i != len(packets)- 1:
-                index = struct.pack('i', current_index)
-                debugger("Send current index:" + str(current_index))
-                host.send(index)
+#         if not is_continue(next_index, current_index):
+#             debugger("current:" + str(current_index) + " =>" + "next:" + str(next_index) + ", not continue")
+#             index = struct.pack('i', current_index)
+#             debugger("Send current index:" + str(current_index))
+#             host.send(index)
 
+#     info("Send all packets finished, connection will be closed")
+#     time.sleep(1)
+#     info("Exit")
+#     host.close()
+#     info("Server wiil continue listening on port %d" %port)
+#     sys.exit(0)
+
+
+def send_packet(host, packets, index, t0):
+
+    timestamp = round((time.time() - t0), 6)   
+    sendp(packets[index], verbose = False, return_packets = True)
+    host.send(struct.pack('i', index))
+    verboser("I:" + str(index+1) + "T:" + str(timestamp) +  " ==>" + " " + packets[index].summary())
+
+def replay_packet(host):
+    global pcap_file
+    # global module
+
+    debugger("Load pcap")
+    packets = rdpcap(pcap_file)
+
+    # tamper = module
+
+    own_packet_index = get_packet_index(packets)
+    
+    packet_num = len(packets)
+
+    info("Start send packet")
+
+    t0 = time.time()
+    for i in range (0, packet_num):
+        if i in own_packet_index:
+            if i != 0:
+                delta = (packets[i].time - packets[i-1].time)/speed
+                time.sleep(delta)
+            send_packet(host, packets, i, t0)
+        else:
+            while True:
+                recv_index = host.recv(4)
+                if len(recv_index):
+                    timestamp = round((time.time() - t0), 6)    
+                    remote_index = struct.unpack('i', recv_index)[0]
+                    verboser("I:" + str(remote_index+1) + "T:" + str(timestamp) + " <==" + " " + packets[remote_index].summary())
+                    break
+    
     info("Send all packets finished, connection will be closed")
     time.sleep(1)
     info("Exit")
@@ -338,13 +393,6 @@ def run_as_server():
     global target
     global port
 
-    # if no target is defined we listen on all interfaces
-    if not len(target):
-        target = "0.0.0.0"
-    elif not validate_ip(target):
-        exit_error("Invalid IP address!")
-    if not validate_port(port):
-        exit_error("Invalid port!")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((target, port))
     server.listen(100)
@@ -357,7 +405,6 @@ def run_as_server():
         conn_thread = threading.Thread(target = conn_handler, args = (conn,))
         conn_thread.start()
         
-
 def conn_handler(conn):
     global pcap_file
 
@@ -376,7 +423,7 @@ def conn_handler(conn):
         elif request == "CNES":
             debugger("CLIENT CE => connection established")
             sync_file(conn)
-            send_packet(conn)
+            replay_packet(conn)
         elif request == "CDFA":
             exit_error("CLIENT CDFA => send file failed")
     
@@ -409,7 +456,7 @@ def run_as_client():
                 debugger("SERVER RCSC => receive file success")
                 if os.path.exists(pcap_file+'.gz'):
                     os.remove(pcap_file+'.gz')
-                send_packet(client)
+                replay_packet(client)
             elif response == "RCFA":
                 exit_error("SERVER RCFA => receive file failed")
 
@@ -436,6 +483,7 @@ def usage():
     print("-p --port                  - CLIENT connect to target port")
     print(                             "SERVER listen on this port")
     print(                             "Default use port 6324")
+    print("-s --speed                 - ajust replay speed, -s 4 means replay by 4 times the speed")
     print("-v --verbose               - Print decoded packets via tcpdump to STDOUT")
     print("-d --debug                 - Initiate with debugging mode")
     print("-h --help                  - Extended usage information passed thru pager")
@@ -458,7 +506,7 @@ def main():
         usage()
     # read the commandlien options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hldvt:p:i:f:", ["help", "listen", "debug", "verbose", "target", "port", "interface", "pacpfile"])
+        opts, args = getopt.getopt(sys.argv[1:], "hldvt:p:i:f:s:", ["help", "listen", "debug", "verbose", "target", "port", "interface", "pacpfile", "speed"])
         for o,a in opts:
             if o in ("-h", "--help"):
                 usage()
@@ -476,13 +524,15 @@ def main():
                 debug = True
             elif o in ("-v", "--verbose"):
                 verbose = True
+            elif o in ("-s", "--speed"):
+                speed = int(a)
             else:
                 assert False, "Unhandled Option"
     except getopt.GetoptError as err:
         print(str(err))
         usage()
     # we are going run as a client send data to server 
-    if not listen > 0:
+    if not listen:
         debugger("check if %s:%d is a valid address" %(target, port))
         if not len(target):
             exit_error("Must select a target host!")
@@ -494,6 +544,8 @@ def main():
         elif not validate_port(port):
             exit_error("Invalid port!")
         debugger("check if %s is a valid file" %pcap_file)
+        if not isinstance(speed, int):
+            exit_error("Wrong type! Speed must be an integer!")
         if not len(pcap_file):
             exit_error("Must select a pcap/pcapng file!")
         elif not pcap_file.endswith('pcap') or pcap_file.endswith('pcapng'):
@@ -502,11 +554,24 @@ def main():
             # check if pcap_file exists
             if os.path.exists(pcap_file):
                 print("run as client")
-                run_as_client()
             else:
                 exit_error("%s does not exist." %pcap_file)
+
+        run_as_client()
     # we are going to listen as a server
-    if listen:
+    else:
+        # if no target is defined we listen on all networks
+        if not len(target):
+            target = "0.0.0.0"
+            debugger("Default listen on all networks 0.0.0.0")
+        elif not validate_ip(target):
+            exit_error("Invalid IP address!")
+        if not port:
+            port = 6324
+            debugger("Default listen on local port 6324")
+        elif not validate_port(port):
+            exit_error("Invalid port!")
+
         run_as_server()
 
 main()

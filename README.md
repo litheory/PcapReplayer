@@ -34,6 +34,8 @@ Then delploy on client and connect to server, and select which pcap file you wan
 ```
 pcapreplay.py -f [pcapfile] -t 192.168.1.24 -p 6324
 ```
+Besides, you can adjust the speed
+
 - How client works
 
   ![demo_client](https://github.com/litheory/PcapReplayer/blob/main/demo_client.png)
