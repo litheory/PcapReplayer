@@ -20,22 +20,27 @@ from scapy.utils import rdpcap
 import threading
 # import subprocess
 
-# import logging
-# logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+import logging
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
 # global parameter
 debug = False
 verbose = False
+quite = False
 listen = False      # listen is server, not listen is client
 target = ""
 port = 6324
-interface = "eth0"
+interface = ""
 pcap_file = ""
 speed = 1
+quick = False
+
 # protocol = ""
 
 def info(str):
-    print("[INFO] " + str)
+    global quite
+    if not quite:
+        print("[INFO] " + str)
 
 def error(str):
     print("[ERROR] " + str)
@@ -45,15 +50,27 @@ def exit_error(str):
     sys.exit(1)
 
 def debugger(str):
+    global quite
     global debug
-    if debug == True:
+    if debug and not quite:
         print("[DEBUG] " + str)
 
 def verboser(str):
+    global quite
     global verbose
-    if verbose == True:
+    if verbose and not quite:
         print(str)
 
+def get_local_interface():
+    interfaces = get_if_list()
+    iface_num = len(interfaces)
+    if iface_num == 0:
+        exit_error("No avaliable interface!Exit!")
+    for i in range(0, iface_num):
+        if interfaces[i] != "lo":
+            return interfaces[i]
+        else:
+            continue
 
 def validate_ip(ip):
     compile_ip = re.compile('^(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|[1-9])\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)$')
@@ -89,11 +106,10 @@ def zip_file(file_name):
 
 def unzip_file(file_name):
     pcap_file = os.path.splitext(file_name)[0]
-    print(pcap_file)
+    debugger("Unzip into %s" %pcap_file)
     zip_obj = gzip.GzipFile(mode = "rb", fileobj = open(file_name, "rb"))
     open(pcap_file, "wb+").write(zip_obj.read())
     return pcap_file
-
 
 def send_file(client):
     global pcap_file
@@ -178,7 +194,6 @@ def receive_file(server):
 
     return filename, md5
 
-
 # sync pcap file between client and server
 def sync_file(host):
     # listen is server, not listen is client
@@ -219,47 +234,6 @@ def sync_file(host):
         except:
             host.send("RCFA".encode('utf-8'))
             exit_error("RCFA: receive file error")
-
-# def set_inner_mode(packets):
-    
-
-def get_packet_index(packets):
-    global listen
-
-    packet_num = len(packets)
-    addr = []
-    packet_index = []
-
-    for i in range(0, packet_num):
-        src_addr = packets[i][IP].src + ":" + str(packets[i][IP].sport)
-        dst_addr = packets[i][IP].dst + ":" + str(packets[i][IP].dport)
-        try:
-            # tcp stream SYN
-            if packets[i][TCP].flags == 0x02:
-                if not listen:
-                    # Client is src
-                    addr.append(src_addr)
-                else:
-                    # Server is dst 
-                    addr.append(dst_addr)
-            if src_addr in addr:
-                packet_index.append(i)
-
-            # # tcp stream FIN and ACK
-            # if packets[i-1][TCP].flags == 0x11 and packets[i][TCP].flags == 0x10:
-            #     if not listen:
-            #         # Delete client in addr list
-            #         del addr[addr.index(dst_addr)]
-            #         # addr[addr.index(dst_addr)] = ''
-            #     else:
-            #         # Delete server in addr list
-            #         del addr[addr.index(dst_addr)]
-            #         # addr[addr.index(src_addr)] = ''
-        except:
-            pass
-
-    return packet_index    
-
 
 # Deprecated function
 #
@@ -343,16 +317,64 @@ def get_packet_index(packets):
 #     info("Server wiil continue listening on port %d" %port)
 #     sys.exit(0)
 
+# def set_inner_mode(packets):
+
+def get_packet_index(packets):
+    global listen
+
+    packet_num = len(packets)
+    addr = []
+    packet_index = []
+
+    for i in range(0, packet_num):
+        src_addr = packets[i][IP].src + ":" + str(packets[i][IP].sport)
+        dst_addr = packets[i][IP].dst + ":" + str(packets[i][IP].dport)
+        try:
+            # tcp stream SYN
+            if packets[i][TCP].flags == 0x02:
+                if not listen:
+                    # Client is src
+                    addr.append(src_addr)
+                else:
+                    # Server is dst 
+                    addr.append(dst_addr)
+            if src_addr in addr:
+                packet_index.append(i)
+
+            # # tcp stream FIN and ACK
+            # if packets[i-1][TCP].flags == 0x11 and packets[i][TCP].flags == 0x10:
+            #     if not listen:
+            #         # Delete client in addr list
+            #         del addr[addr.index(dst_addr)]
+            #         # addr[addr.index(dst_addr)] = ''
+            #     else:
+            #         # Delete server in addr list
+            #         del addr[addr.index(dst_addr)]
+            #         # addr[addr.index(src_addr)] = ''
+        except:
+            pass
+
+    return packet_index    
 
 def send_packet(host, packets, index, t0):
-
     timestamp = round((time.time() - t0), 6)   
-    sendp(packets[index], verbose = False, return_packets = True)
+    sendp(packets[index], iface = interface, verbose = False)
     host.send(struct.pack('i', index))
-    verboser("I:" + str(index+1) + "T:" + str(timestamp) +  " ==>" + " " + packets[index].summary())
+    verboser("I:" + str(index+1) + " T:" + str(timestamp) +  " ==>" + " " + packets[index].summary())
+
+def recv_packet(host, packets, t0):
+    while True:
+        recv_index = host.recv(4)
+        if len(recv_index):
+            timestamp = round((time.time() - t0), 6)    
+            remote_index = struct.unpack('i', recv_index)[0]
+            verboser("I:" + str(remote_index+1) + " T:" + str(timestamp) + " <==" + " " + packets[remote_index].summary())
+            break
 
 def replay_packet(host):
     global pcap_file
+    global speed
+    global quick
     # global module
 
     debugger("Load pcap")
@@ -364,29 +386,24 @@ def replay_packet(host):
     
     packet_num = len(packets)
 
-    info("Start send packet")
+    info("Start replay packet")
 
     t0 = time.time()
     for i in range (0, packet_num):
         if i in own_packet_index:
-            if i != 0:
+            if (i != 0) and not quick:
                 delta = (packets[i].time - packets[i-1].time)/speed
                 time.sleep(delta)
             send_packet(host, packets, i, t0)
         else:
-            while True:
-                recv_index = host.recv(4)
-                if len(recv_index):
-                    timestamp = round((time.time() - t0), 6)    
-                    remote_index = struct.unpack('i', recv_index)[0]
-                    verboser("I:" + str(remote_index+1) + "T:" + str(timestamp) + " <==" + " " + packets[remote_index].summary())
-                    break
-    
+            recv_packet(host, packets, t0)
+            
     info("Send all packets finished, connection will be closed")
-    time.sleep(1)
-    info("Exit")
-    host.close()
-    info("Server wiil continue listening on port %d" %port)
+    if listen:
+        info("Server wiil continue listening on port %d" %port)
+    else:
+        info("Exit")
+        host.close()
     sys.exit(0)
 
 def run_as_server():
@@ -475,7 +492,7 @@ def usage():
     print("CLIENT: pcapreplay.py -i [interface] -t [target] -p [port] -f [pcapfile]")
     print("-i --interface             - CLIENT Client to server traffic output interface")
     print(                             "SERVER Server to client traffic output interface")
-    print(                             "Default use eth0")
+    print(                             "Default use the first avaliable iface")
     print("-f --file                  - CLIENT upon receiving connection upload a file and write to [target]")
     print("-l --listen                - SERVER listen on [host]:[port] for incoming connections")
     print("-t --target                - CLIENT connect to target host")
@@ -483,9 +500,11 @@ def usage():
     print("-p --port                  - CLIENT connect to target port")
     print(                             "SERVER listen on this port")
     print(                             "Default use port 6324")
-    print("-s --speed                 - ajust replay speed, -s 4 means replay by 4 times the speed")
+    print("-s --speed                 - ajust the speed of replay, -s 4 means replay by 4 times the speed")
+    print("-Q --quick                 - All packets will be sent finished immediately, must be selected by both ends at the same time")
     print("-v --verbose               - Print decoded packets via tcpdump to STDOUT")
     print("-d --debug                 - Initiate with debugging mode")
+    print("-q --quite                 - Unimportant infomation will be filterd")
     print("-h --help                  - Extended usage information passed thru pager")
     print("Run as SERVER: ")
     print("pcapreplay.py -i eth0 --listen -p 6324")
@@ -501,12 +520,15 @@ def main():
     global interface
     global debug
     global verbose
+    global speed
+    global quite 
+    global quick
 
     if not len(sys.argv[1:]):
         usage()
     # read the commandlien options
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hldvt:p:i:f:s:", ["help", "listen", "debug", "verbose", "target", "port", "interface", "pacpfile", "speed"])
+        opts, args = getopt.getopt(sys.argv[1:], "hldvqt:p:i:f:s:Q", ["help", "listen", "debug", "verbose", "quite", "target", "port", "interface", "pacpfile", "speed", "quick"])
         for o,a in opts:
             if o in ("-h", "--help"):
                 usage()
@@ -524,13 +546,18 @@ def main():
                 debug = True
             elif o in ("-v", "--verbose"):
                 verbose = True
+            elif o in ("-q", "--quite"):
+                quite = True
             elif o in ("-s", "--speed"):
                 speed = int(a)
+            elif o in ("-Q", "--quick"):
+                quick = True
             else:
                 assert False, "Unhandled Option"
     except getopt.GetoptError as err:
         print(str(err))
         usage()
+
     # we are going run as a client send data to server 
     if not listen:
         debugger("check if %s:%d is a valid address" %(target, port))
@@ -556,8 +583,12 @@ def main():
                 print("run as client")
             else:
                 exit_error("%s does not exist." %pcap_file)
+        if not len(interface):
+            interface = get_local_interface()
+            info("Default use the first avaliable interface: %s" %interface)
 
         run_as_client()
+
     # we are going to listen as a server
     else:
         # if no target is defined we listen on all networks
@@ -571,6 +602,9 @@ def main():
             debugger("Default listen on local port 6324")
         elif not validate_port(port):
             exit_error("Invalid port!")
+        if not len(interface):
+            interface = get_local_interface()
+            info("Default use the first avaliable interface: %s" %interface)
 
         run_as_server()
 

@@ -23,6 +23,12 @@ A typical scenarios is to test your firewall’s or waf’s detection performanc
 
 - Support costum module
 - Support loop replay
+- Support replay multi pcap at the same time
+
+## Features
+
+- Work on both client and server ends, simulate the real environment
+- Support adjust speed rate and quick mode by set with `--speed [INT]`and  `--quick`
 
 ## Usage
 
@@ -34,7 +40,7 @@ Then delploy on client and connect to server, and select which pcap file you wan
 ```
 pcapreplay.py -f [pcapfile] -t 192.168.1.24 -p 6324
 ```
-Besides, you can  the speed rate by set with `-speed [INT]`
+Besides, you can  the speed rate or use quick mode to send all the packet immediately. 
 
 - How client works
 
